@@ -1,0 +1,19 @@
+# 构建产物
+alu-tube-app/build/
+alu-tube-app/app/build/
+alu-tube-app/.gradle/
+alu-tube-app/gradle-8.7/
+alu-tube-app/gradle-8.7-bin.zip
+alu-tube-app/local.properties
+
+# 优化前源码备份
+_backup/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+
+# 交付包（如需随版本管理，删掉这一行）
+releases/*.apk
