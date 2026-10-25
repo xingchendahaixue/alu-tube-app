@@ -53,7 +53,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 4
+    private const val DATA_FIX_VERSION = 5
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -134,7 +134,11 @@ object DataDb {
         // v4 起规格命名统一为 R{主轴}×{末端}×{壁厚}
         if (applied < 4) {
             rebuildCustomer(context, db, "德钢")
-            normalizeSpecNames(db)
+            normalizeSpecNames(db, "customer_products", "规格型号(mm)")
+        }
+        // v5：产品尺寸标准（凯宏表3）也统一加 R 前缀，如 16×1.5 → R16×1.5
+        if (applied < 5) {
+            normalizeSpecNames(db, "size_standards", "规格/mm")
         }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
@@ -166,21 +170,26 @@ object DataDb {
         }
     }
 
-    /** 规格型号统一命名：R{主轴}×{末端}×{壁厚}（旧的 16*1.5*0.3 → R16×1.5×0.3） */
-    private fun normalizeSpecNames(db: SQLiteDatabase) {
+    /**
+     * 规格命名统一加 R 前缀，并把 * / x 换成 ×
+     * （customer_products：16*1.5*0.3 → R16×1.5×0.3；size_standards：16×1.5 → R16×1.5）
+     * 只处理形如 "数字×数字..." 的规格值，说明文字等其它内容原样保留。
+     */
+    private fun normalizeSpecNames(db: SQLiteDatabase, category: String, field: String) {
         val updates = mutableListOf<Pair<Long, String>>()
         db.rawQuery(
-            "SELECT id, data FROM records WHERE category='customer_products'", null
+            "SELECT id, data FROM records WHERE category=?", arrayOf(category)
         ).use { c ->
             while (c.moveToNext()) {
                 val id = c.getLong(0)
                 val o = JSONObject(c.getString(1))
-                val spec = o.optString("规格型号(mm)", "").trim()
+                val spec = o.optString(field, "").trim()
                 if (spec.isEmpty()) continue
                 var s = spec.replace('*', '×').replace('x', '×').replace('X', '×')
+                if (!Regex("^\\d").containsMatchIn(s)) continue   // 不是"数字开头"的规格值，跳过
                 if (!s.startsWith("R")) s = "R$s"
                 if (s != spec) {
-                    o.put("规格型号(mm)", s)
+                    o.put(field, s)
                     updates.add(id to o.toString())
                 }
             }
