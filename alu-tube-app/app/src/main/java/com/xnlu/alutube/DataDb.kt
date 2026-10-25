@@ -53,7 +53,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 6
+    private const val DATA_FIX_VERSION = 7
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -145,6 +145,11 @@ object DataDb {
             normalizeSpecNames(db, "customer_products", "规格型号(mm)")
             normalizeSpecNames(db, "size_standards", "规格/mm")
         }
+        // v7：壁厚小数点第二位为 0 则不留（R16×2.0×0.30 → R16×2.0×0.3）
+        if (applied < 7) {
+            normalizeSpecNames(db, "customer_products", "规格型号(mm)")
+            normalizeSpecNames(db, "size_standards", "规格/mm")
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
     }
@@ -179,7 +184,7 @@ object DataDb {
      * 规格命名统一格式：R{主轴}×{末端}×{壁厚}
      *  - 主轴 A：原样（16、23.5、31.57）
      *  - 末端 C：至少 1 位小数（2 → 2.0；8.08 保留原精度）
-     *  - 壁厚 T：至少 2 位小数，支持 0.28/0.30 这类复合值（0.3 → 0.30；0.285 保留）
+     *  - 壁厚 T：至少 1 位小数，第二位是 0 不留（0.3 → 0.3；0.26/0.28/0.285 保持），支持 0.28/0.3 这类复合值
      * 只处理 "数字×数字(×数字)" 形式的规格值，说明文字等其它内容原样保留。
      * （customer_products：16*1.5*0.3 → R16×1.5×0.30；size_standards：16×2 → R16×2.0）
      */
@@ -200,7 +205,7 @@ object DataDb {
                 val out = parts.toMutableList()
                 out[1] = padDecimals(out[1], 1)
                 for (i in 2 until out.size) {
-                    out[i] = out[i].split("/").joinToString("/") { padDecimals(it, 2) }
+                    out[i] = out[i].split("/").joinToString("/") { normThickness(it) }
                 }
                 val result = "R" + out.joinToString("×")
                 if (result != spec) {
@@ -221,6 +226,13 @@ object DataDb {
         val dec = if (t.contains('.')) t.substringAfter('.').length else 0
         if (dec >= minDecimals) return t
         return if (dec == 0) t + "." + "0".repeat(minDecimals) else t + "0".repeat(minDecimals - dec)
+    }
+
+    /** 壁厚：至少 1 位小数；第二位为 0 时不留（0.30 → 0.3，0.26/0.28/0.285 保持） */
+    private fun normThickness(v: String): String {
+        val t = padDecimals(v, 2)
+        val dec = if (t.contains('.')) t.substringAfter('.').length else 0
+        return if (dec == 2 && t.endsWith("0")) t.dropLast(1) else t
     }
 
     private fun insert(category: String, data: Map<String, String>, sort: Int, db: SQLiteDatabase? = null): Long {
