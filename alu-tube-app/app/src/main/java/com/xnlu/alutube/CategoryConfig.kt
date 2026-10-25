@@ -48,10 +48,13 @@ object CategoryConfig {
             )
         ),
         Cat(
-            "molds", "模具配置台账", "两套模具的架次-辊位-模具编号",
+            "molds", "模具配置台账", "三套模具的架次-辊位-模具编号",
             "模具编号",
             listOf("产品型号", "架次", "辊位类型"),
-            listOf("产品型号", "架次", "辊位类型", "模具编号", "备注")
+            listOf("产品型号", "架次", "辊位类型", "模具编号", "备注"),
+            dropdowns = listOf(
+                Dropdown("产品型号", "全部产品型号", numericGroup = false)
+            )
         ),
         Cat(
             "weld_params", "焊接工艺参数", "高频焊关键工艺参数速查",

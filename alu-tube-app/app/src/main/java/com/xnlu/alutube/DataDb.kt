@@ -53,7 +53,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 8
+    private const val DATA_FIX_VERSION = 9
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -170,8 +170,40 @@ object DataDb {
         if (applied < 8) {
             fillBlankPressure(db, "德钢", DEGANG_PRESSURE)
         }
+        // v9：新增第三套模具 22.5×1.5（11 平辊 + 11 立辊，按 平-立 交替排到 22 架次）
+        if (applied < 9) {
+            importMoldsIfAbsent(context, db, "水箱管22.5×1.5")
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
+    }
+
+    /**
+     * 按 assets 种子数据补入某一套模具（productModel 相同的记录）。
+     * 只在库里还没有这套模具时整段导入，重复执行不会产生重复记录，也不动用户已改过的旧数据。
+     */
+    private fun importMoldsIfAbsent(context: Context, db: SQLiteDatabase, productModel: String) {
+        var exists = false
+        db.rawQuery("SELECT data FROM records WHERE category='molds'", null).use { c ->
+            while (c.moveToNext()) {
+                if (JSONObject(c.getString(0)).optString("产品型号", "").trim() == productModel) {
+                    exists = true
+                    break
+                }
+            }
+        }
+        if (exists) return
+        val json = context.assets.open("app_data.json").bufferedReader().use { it.readText() }
+        val arr = JSONObject(json).optJSONArray("molds") ?: return
+        val cat = CategoryConfig.byKey("molds")
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            if (obj.optString("产品型号", "").trim() != productModel) continue
+            val map = mutableMapOf<String, String>()
+            for (f in cat.fields) map[f] = obj.optString(f, "")
+            for (key in obj.keys()) if (key !in map) map[key] = obj.optString(key, "")
+            insert("molds", map, i, db)
+        }
     }
 
     /** 按 assets 种子数据整段重建某个客户的产品记录（旧规格记录删除，含其照片目录） */
