@@ -27,6 +27,13 @@ class MainActivity : AppCompatActivity() {
         DataDb.init(this)
         DataDb.seedIfNeeded(this)
 
+        // 加固：从最近任务恢复等路径直接进来时，未登录先回登录页
+        if (!Auth.isLoggedIn(this)) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         val scroll = ScrollView(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -86,9 +93,12 @@ class MainActivity : AppCompatActivity() {
         root.addView(rowCard(0xFFFB8C00, "报", "生产报表", "原材料 / 损耗 / 废品 / 合格品 · 按日填写，自动汇总") {
             startActivity(Intent(this@MainActivity, ReportActivity::class.java))
         })
+        root.addView(rowCard(0xFF546E7A, "备", "数据与账号", "备份导出 / 恢复 / 修改密码 · 换手机不丢数据") {
+            startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+        })
 
         root.addView(TextView(this).apply {
-            text = "数据来源：《高频焊铝管生产工艺数据档案》(2026-10-20 建档)\n现场录入与报表保存在本机"
+            text = "数据来源：《高频焊铝管生产工艺数据档案》(2026-10-20 建档)\n现场录入与报表保存在本机，可在「数据与账号」导出备份"
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(0xFF90A4AE.toInt())

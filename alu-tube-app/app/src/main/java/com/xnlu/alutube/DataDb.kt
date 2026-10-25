@@ -17,7 +17,8 @@ object DataDb {
     /** 一条记录的内存视图：searchText 预先转小写，避免每次按键重复拼串 */
     data class Row(val id: Long, val data: Map<String, String>, val searchText: String)
 
-    private val cache = HashMap<String, List<Row>>()
+    /** 缓存用并发容器：备份恢复在后台线程写库时，主线程可能正在读 */
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, List<Row>>()
 
     private fun invalidate(category: String? = null) {
         if (category == null) cache.clear() else cache.remove(category)
@@ -335,6 +336,19 @@ object DataDb {
         invalidate(category)
         return id
     }
+
+    /** 带排序号插入（备份恢复时保留原有排列顺序） */
+    fun insertWithSort(category: String, data: Map<String, String>, sort: Int): Long {
+        val id = insert(category, data, sort)
+        invalidate(category)
+        return id
+    }
+
+    /** 某类别记录条数（主界面显示、备份前统计用） */
+    fun count(category: String): Int = rows(category).size
+
+    /** 报表总份数 */
+    fun reportCount(): Int = reportDates().size
 
     fun update(id: Long, data: Map<String, String>) {
         val cv = android.content.ContentValues().apply {

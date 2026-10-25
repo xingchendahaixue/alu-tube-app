@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 备份压缩包临时放在 cache/backup/，通过 FileProvider 分享给微信等应用 -->
+    <cache-path name="backup" path="backup/" />
+</paths>
