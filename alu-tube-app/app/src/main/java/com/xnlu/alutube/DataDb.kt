@@ -53,9 +53,25 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 7
+    private const val DATA_FIX_VERSION = 8
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
+
+    /**
+     * v8：德钢各规格爆破压力（v2.9 换表时被清空，按旧档案回填）。
+     * 键 = 主轴|末端|壁厚（Double 形式，如 16.0|2.0|0.3）
+     */
+    private val DEGANG_PRESSURE = mapOf(
+        "16.0|2.0|0.3" to "8.13",
+        "22.5|1.4|0.3" to "5.95",
+        "22.5|1.5|0.3" to "5.93",
+        "23.5|1.5|0.3" to "5.68",
+        "23.5|2.0|0.3" to "5.62",
+        "26.0|1.5|0.3" to "5.14",
+        "26.0|2.0|0.3" to "5.12",
+        "32.0|1.5|0.3" to "4.20",
+        "32.0|2.0|0.3" to "4.16"
+    )
 
     /** 首次启动时从 assets 导入数据（只导入一次），之后套用数据纠错 */
     fun seedIfNeeded(context: Context) {
@@ -150,6 +166,10 @@ object DataDb {
             normalizeSpecNames(db, "customer_products", "规格型号(mm)")
             normalizeSpecNames(db, "size_standards", "规格/mm")
         }
+        // v8：德钢压力回填（v2.9 换表时被清空，只填空值，不覆盖用户已填）
+        if (applied < 8) {
+            fillBlankPressure(db, "德钢", DEGANG_PRESSURE)
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
     }
@@ -233,6 +253,39 @@ object DataDb {
         val t = padDecimals(v, 2)
         val dec = if (t.contains('.')) t.substringAfter('.').length else 0
         return if (dec == 2 && t.endsWith("0")) t.dropLast(1) else t
+    }
+
+    /** 规格比较键：主轴|末端|壁厚（R16×2.0×0.3 → "16.0|2.0|0.3"），解析失败返回 null */
+    private fun specKey(spec: String): String? {
+        val body = spec.trim().replace('*', '×').replace('x', '×').replace('X', '×').removePrefix("R")
+        val p = body.split("×").map { it.trim() }
+        if (p.size < 3) return null
+        val a = p[0].toDoubleOrNull() ?: return null
+        val c = p[1].toDoubleOrNull() ?: return null
+        val t = p[2].toDoubleOrNull() ?: return null
+        return "$a|$c|$t"
+    }
+
+    /** 给某客户的空压力栏按规格回填（已有值不覆盖） */
+    private fun fillBlankPressure(db: SQLiteDatabase, customer: String, values: Map<String, String>) {
+        val updates = mutableListOf<Pair<Long, String>>()
+        db.rawQuery(
+            "SELECT id, data FROM records WHERE category='customer_products'", null
+        ).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val o = JSONObject(c.getString(1))
+                if (o.optString("客户名称", "").trim() != customer) continue
+                if (o.optString("压力/备注(MPa)", "").isNotBlank()) continue
+                val key = specKey(o.optString("规格型号(mm)", "")) ?: continue
+                val v = values[key] ?: continue
+                o.put("压力/备注(MPa)", v)
+                updates.add(id to o.toString())
+            }
+        }
+        for ((id, data) in updates) {
+            db.execSQL("UPDATE records SET data=? WHERE id=?", arrayOf(data, id.toString()))
+        }
     }
 
     private fun insert(category: String, data: Map<String, String>, sort: Int, db: SQLiteDatabase? = null): Long {
