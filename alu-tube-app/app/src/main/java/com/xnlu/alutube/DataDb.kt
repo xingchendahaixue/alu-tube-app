@@ -53,37 +53,40 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 2
+    private const val DATA_FIX_VERSION = 3
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
-    /** 首次启动时从 assets 导入数据（只导入一次） */
+    /** 首次启动时从 assets 导入数据（只导入一次），之后套用数据纠错 */
     fun seedIfNeeded(context: Context) {
-        applyDataFixes(context)
         val db = helper.writableDatabase
+        var empty = false
         db.rawQuery("SELECT COUNT(*) FROM records", null).use { c ->
-            if (c.moveToFirst() && c.getInt(0) > 0) return
+            empty = !(c.moveToFirst() && c.getInt(0) > 0)
         }
-        val json = context.assets.open("app_data.json").bufferedReader().use { it.readText() }
-        val root = JSONObject(json)
-        db.beginTransaction()
-        try {
-            for (cat in CategoryConfig.all) {
-                val arr = root.optJSONArray(cat.key) ?: continue
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val map = mutableMapOf<String, String>()
-                    for (f in cat.fields) map[f] = obj.optString(f, "")
-                    // 台账等表可能有"备注"以外的额外字段，也保留
-                    for (key in obj.keys()) if (key !in map) map[key] = obj.optString(key, "")
-                    insert(cat.key, map, i, db)
+        if (empty) {
+            val json = context.assets.open("app_data.json").bufferedReader().use { it.readText() }
+            val root = JSONObject(json)
+            db.beginTransaction()
+            try {
+                for (cat in CategoryConfig.all) {
+                    val arr = root.optJSONArray(cat.key) ?: continue
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val map = mutableMapOf<String, String>()
+                        for (f in cat.fields) map[f] = obj.optString(f, "")
+                        // 台账等表可能有"备注"以外的额外字段，也保留
+                        for (key in obj.keys()) if (key !in map) map[key] = obj.optString(key, "")
+                        insert(cat.key, map, i, db)
+                    }
                 }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
+            invalidate()
         }
-        invalidate()
+        applyDataFixes(context)
     }
 
     /** 一次性数据纠错：把档案导入时识别错的内容改正（精确匹配，不影响用户其他修改） */
@@ -127,8 +130,38 @@ object DataDb {
         } finally {
             db.endTransaction()
         }
+        // v3：德钢产品尺寸整段换新（客户新表 11 个规格，公差 A +0.03/-0.02、B ±0.05、C +0.03/-0.02）
+        if (applied < 3) {
+            rebuildCustomer(context, db, "德钢")
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
+    }
+
+    /** 按 assets 种子数据整段重建某个客户的产品记录（旧规格记录删除，含其照片目录） */
+    private fun rebuildCustomer(context: Context, db: SQLiteDatabase, customer: String) {
+        val ids = mutableListOf<Long>()
+        db.rawQuery("SELECT id, data FROM records WHERE category='customer_products'", null).use { c ->
+            while (c.moveToNext()) {
+                val o = JSONObject(c.getString(1))
+                if (o.optString("客户名称", "").trim() == customer) ids.add(c.getLong(0))
+            }
+        }
+        for (id in ids) {
+            db.delete("records", "id=?", arrayOf(id.toString()))
+            java.io.File(context.filesDir, "photos/$id").deleteRecursively()
+        }
+        val json = context.assets.open("app_data.json").bufferedReader().use { it.readText() }
+        val arr = JSONObject(json).optJSONArray("customer_products") ?: return
+        val cat = CategoryConfig.byKey("customer_products")
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            if (obj.optString("客户名称", "").trim() != customer) continue
+            val map = mutableMapOf<String, String>()
+            for (f in cat.fields) map[f] = obj.optString(f, "")
+            for (key in obj.keys()) if (key !in map) map[key] = obj.optString(key, "")
+            insert("customer_products", map, i, db)
+        }
     }
 
     private fun insert(category: String, data: Map<String, String>, sort: Int, db: SQLiteDatabase? = null): Long {
