@@ -145,10 +145,10 @@ class RecordListActivity : AppCompatActivity() {
         }
     }
 
-    /** 取公称值：字段值的第一个数字（16*1.5*0.3 → "16"） */
+    /** 取公称值：字段值的第一个数字（R16×1.5×0.3 / 16*1.5*0.3 → "16"） */
     private fun groupKey(value: String?): String? {
         if (value.isNullOrBlank()) return null
-        return Regex("^\\s*(\\d+(?:\\.\\d+)?)").find(value)?.groupValues?.get(1)
+        return Regex("^\\s*R?\\s*(\\d+(?:\\.\\d+)?)").find(value)?.groupValues?.get(1)
     }
 
     /** 管型显示名：统一加 R 前缀（R12、R16、R23.5…，与模具编号习惯一致） */
