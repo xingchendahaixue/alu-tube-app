@@ -53,7 +53,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 5
+    private const val DATA_FIX_VERSION = 6
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -140,6 +140,11 @@ object DataDb {
         if (applied < 5) {
             normalizeSpecNames(db, "size_standards", "规格/mm")
         }
+        // v6：规格统一小数位——末端 C 一位小数（R16×2.0）、壁厚 T 两位小数（R16×2.0×0.30）
+        if (applied < 6) {
+            normalizeSpecNames(db, "customer_products", "规格型号(mm)")
+            normalizeSpecNames(db, "size_standards", "规格/mm")
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
     }
@@ -171,9 +176,12 @@ object DataDb {
     }
 
     /**
-     * 规格命名统一加 R 前缀，并把 * / x 换成 ×
-     * （customer_products：16*1.5*0.3 → R16×1.5×0.3；size_standards：16×1.5 → R16×1.5）
-     * 只处理形如 "数字×数字..." 的规格值，说明文字等其它内容原样保留。
+     * 规格命名统一格式：R{主轴}×{末端}×{壁厚}
+     *  - 主轴 A：原样（16、23.5、31.57）
+     *  - 末端 C：至少 1 位小数（2 → 2.0；8.08 保留原精度）
+     *  - 壁厚 T：至少 2 位小数，支持 0.28/0.30 这类复合值（0.3 → 0.30；0.285 保留）
+     * 只处理 "数字×数字(×数字)" 形式的规格值，说明文字等其它内容原样保留。
+     * （customer_products：16*1.5*0.3 → R16×1.5×0.30；size_standards：16×2 → R16×2.0）
      */
     private fun normalizeSpecNames(db: SQLiteDatabase, category: String, field: String) {
         val updates = mutableListOf<Pair<Long, String>>()
@@ -185,11 +193,18 @@ object DataDb {
                 val o = JSONObject(c.getString(1))
                 val spec = o.optString(field, "").trim()
                 if (spec.isEmpty()) continue
-                var s = spec.replace('*', '×').replace('x', '×').replace('X', '×')
-                if (!Regex("^\\d").containsMatchIn(s)) continue   // 不是"数字开头"的规格值，跳过
-                if (!s.startsWith("R")) s = "R$s"
-                if (s != spec) {
-                    o.put(field, s)
+                val body = spec.replace('*', '×').replace('x', '×').replace('X', '×').removePrefix("R")
+                val parts = body.split("×").map { it.trim() }
+                if (parts.size < 2) continue
+                if (parts.any { p -> p.split("/").any { it.toDoubleOrNull() == null } }) continue
+                val out = parts.toMutableList()
+                out[1] = padDecimals(out[1], 1)
+                for (i in 2 until out.size) {
+                    out[i] = out[i].split("/").joinToString("/") { padDecimals(it, 2) }
+                }
+                val result = "R" + out.joinToString("×")
+                if (result != spec) {
+                    o.put(field, result)
                     updates.add(id to o.toString())
                 }
             }
@@ -197,6 +212,15 @@ object DataDb {
         for ((id, data) in updates) {
             db.execSQL("UPDATE records SET data=? WHERE id=?", arrayOf(data, id.toString()))
         }
+    }
+
+    /** 数字至少补到 minDecimals 位小数（已有更多位则保留原精度） */
+    private fun padDecimals(v: String, minDecimals: Int): String {
+        val t = v.trim()
+        if (t.toDoubleOrNull() == null) return t
+        val dec = if (t.contains('.')) t.substringAfter('.').length else 0
+        if (dec >= minDecimals) return t
+        return if (dec == 0) t + "." + "0".repeat(minDecimals) else t + "0".repeat(minDecimals - dec)
     }
 
     private fun insert(category: String, data: Map<String, String>, sort: Int, db: SQLiteDatabase? = null): Long {
