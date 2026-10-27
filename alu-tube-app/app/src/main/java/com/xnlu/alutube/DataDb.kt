@@ -54,7 +54,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 9
+    private const val DATA_FIX_VERSION = 10
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -174,6 +174,10 @@ object DataDb {
         // v9：新增第三套模具 22.5×1.5（11 平辊 + 11 立辊，按 平-立 交替排到 22 架次）
         if (applied < 9) {
             importMoldsIfAbsent(context, db, "水箱管22.5×1.5")
+        }
+        // v10：新增第四套模具 26×2.0（16 平辊[1~5 位 S/X 成对] + 11 立辊，平-立 交替排到 22 架次）
+        if (applied < 10) {
+            importMoldsIfAbsent(context, db, "水箱管26×2.0")
         }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
