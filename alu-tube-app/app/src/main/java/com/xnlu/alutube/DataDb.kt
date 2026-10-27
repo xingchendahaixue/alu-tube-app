@@ -54,7 +54,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 10
+    private const val DATA_FIX_VERSION = 11
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -179,6 +179,10 @@ object DataDb {
         if (applied < 10) {
             importMoldsIfAbsent(context, db, "水箱管26×2.0")
         }
+        // v11：辊位类型「竖」统一为「立」（23.5×1.5 那套 7 条历史笔误）
+        if (applied < 11) {
+            normalizeMoldPosition(db)
+        }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
     }
@@ -208,6 +212,23 @@ object DataDb {
             for (f in cat.fields) map[f] = obj.optString(f, "")
             for (key in obj.keys()) if (key !in map) map[key] = obj.optString(key, "")
             insert("molds", map, i, db)
+        }
+    }
+
+    /** v11：模具台账辊位类型「竖」统一为「立」（历史笔误，精确匹配只改这一个值） */
+    private fun normalizeMoldPosition(db: SQLiteDatabase) {
+        db.rawQuery("SELECT id, data FROM records WHERE category='molds'", null).use { c ->
+            val updates = mutableListOf<Pair<Long, String>>()
+            while (c.moveToNext()) {
+                val o = JSONObject(c.getString(1))
+                if (o.optString("辊位类型", "").trim() == "竖") {
+                    o.put("辊位类型", "立")
+                    updates.add(c.getLong(0) to o.toString())
+                }
+            }
+            for ((id, data) in updates) {
+                db.execSQL("UPDATE records SET data=? WHERE id=?", arrayOf(data, id.toString()))
+            }
         }
     }
 
