@@ -98,7 +98,8 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "数据来源：《高频焊铝管生产工艺数据档案》(2026-10-20 建档)\n现场录入与报表保存在本机，可在「数据与账号」导出备份"
+            text = "数据来源：《高频焊铝管生产工艺数据档案》(2026-10-20 建档)\n" +
+                "当前版本 ${AppInfo.label(this@MainActivity)} · 现场录入与报表保存在本机，可在「数据与账号」导出备份"
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(0xFF90A4AE.toInt())

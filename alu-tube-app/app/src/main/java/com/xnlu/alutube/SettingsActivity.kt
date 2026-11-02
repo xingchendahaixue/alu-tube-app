@@ -104,6 +104,54 @@ class SettingsActivity : AppCompatActivity() {
         accCard.addView(af)
         root.addView(accCard)
 
+        // ===== 关于 =====
+        root.addView(sectionLabel("关于"))
+        val aboutCard = card()
+        val gf = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        gf.addView(TextView(this).apply {
+            text = "铝管工艺通  " + AppInfo.label(this@SettingsActivity)
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(0xFF263238.toInt())
+        })
+        gf.addView(TextView(this).apply {
+            text = "新版本 APK 下载地址"
+            textSize = 11.5f
+            setTextColor(0xFF90A4AE.toInt())
+            setPadding(0, dp(12), 0, dp(2))
+        })
+        gf.addView(TextView(this).apply {
+            text = AppInfo.DOWNLOAD_URL
+            textSize = 12.5f
+            setTextColor(0xFF1565C0.toInt())
+            setLineSpacing(dp(2).toFloat(), 1f)
+            setTextIsSelectable(true)
+        })
+        gf.addView(primaryButton("打开下载页") {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppInfo.DOWNLOAD_URL)))
+            } catch (e: Exception) {
+                toast("没有可用浏览器，请长按地址复制")
+            }
+        })
+        gf.addView(outlineButton("复制下载地址") {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("下载地址", AppInfo.DOWNLOAD_URL))
+            toast("已复制下载地址")
+        })
+        gf.addView(TextView(this).apply {
+            text = "仓库为私有，首次打开需登录 GitHub 账号；下载后覆盖安装即可，本机数据不会丢。"
+            textSize = 11f
+            setTextColor(0xFF9E9E9E.toInt())
+            setPadding(0, dp(10), 0, 0)
+            setLineSpacing(dp(3).toFloat(), 1f)
+        })
+        aboutCard.addView(gf)
+        root.addView(aboutCard)
+
         root.addView(TextView(this).apply {
             text = "多台手机之间自动同步需要云端服务，暂未开通；\n当前可在手机上导出备份，用微信传给其他手机导入。"
             textSize = 11f
