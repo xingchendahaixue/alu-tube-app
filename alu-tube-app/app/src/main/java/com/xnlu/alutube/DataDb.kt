@@ -54,7 +54,7 @@ object DataDb {
     }
 
     /** 档案数据纠错版本：每次修正种子数据后 +1，升级后首次启动自动套用到手机已有数据 */
-    private const val DATA_FIX_VERSION = 11
+    private const val DATA_FIX_VERSION = 12
     /** v1：整名替换（识别错的客户名） */
     private val DATA_FIXES_V1 = mapOf("鲍昂" to "瀚昂", "雷迪" to "淮驰")
 
@@ -182,6 +182,10 @@ object DataDb {
         // v11：辊位类型「竖」统一为「立」（23.5×1.5 那套 7 条历史笔误）
         if (applied < 11) {
             normalizeMoldPosition(db)
+        }
+        // v12：新增第五套模具 16×1.5（11 平 + 11 立，平-立 交替排到 22 架次）
+        if (applied < 12) {
+            importMoldsIfAbsent(context, db, "水箱管16×1.5")
         }
         prefs.edit().putInt("version", DATA_FIX_VERSION).apply()
         invalidate()
