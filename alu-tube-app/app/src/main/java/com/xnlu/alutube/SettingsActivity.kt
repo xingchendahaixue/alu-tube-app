@@ -143,7 +143,7 @@ class SettingsActivity : AppCompatActivity() {
             toast("已复制下载地址")
         })
         gf.addView(TextView(this).apply {
-            text = "仓库为私有，首次打开需登录 GitHub 账号；下载后覆盖安装即可，本机数据不会丢。"
+            text = "点「打开下载页」用浏览器打开，选最新版本下载 APK，直接覆盖安装即可，本机数据不会丢。"
             textSize = 11f
             setTextColor(0xFF9E9E9E.toInt())
             setPadding(0, dp(10), 0, 0)

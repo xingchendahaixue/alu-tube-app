@@ -16,10 +16,11 @@ class RecordListActivity : AppCompatActivity() {
     private lateinit var cat: CategoryConfig.Cat
     private lateinit var adapter: RecordAdapter
     private var filter: String = ""
-    private val filterValues = mutableMapOf<String, String>()   // 下拉筛选：字段 -> 选中值
+    private val filterValues = mutableMapOf<String, String>()   // 下拉筛选：下拉 id -> 选中值
     private val spinners = mutableListOf<Pair<CategoryConfig.Dropdown, androidx.appcompat.widget.AppCompatSpinner>>()
     /** 当前类目的全量数据（内存缓存），搜索/筛选都在这份数据上做，不再反复查库 */
     private var allRows: List<DataDb.Row> = emptyList()
+    private lateinit var clearBtn: com.google.android.material.button.MaterialButton
     private val searchHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingSearch: Runnable? = null
 
@@ -53,15 +54,19 @@ class RecordListActivity : AppCompatActivity() {
         }
 
         // 下拉筛选（按分类配置动态生成：客户 / 主轴型号 / 长轴型号…）
-        val row = findViewById<LinearLayout>(R.id.filterRow)
+        val row = findViewById<LinearLayout>(R.id.spinnerRow)
         for (cfg in cat.dropdowns) {
             val sp = androidx.appcompat.widget.AppCompatSpinner(this)
-            row.addView(sp, row.childCount - 1)   // 插在计数 TextView 之前
+            sp.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, dp(10), 0) }
+            row.addView(sp)
             sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
                     val newFilter = if (pos == 0) "" else sp.adapter?.getItem(pos)?.toString() ?: ""
-                    if (newFilter != filterValues[cfg.field]) {
-                        filterValues[cfg.field] = newFilter
+                    if (newFilter != filterValues[cfg.id]) {
+                        filterValues[cfg.id] = newFilter
                         applyFilter()
                     }
                 }
@@ -69,6 +74,28 @@ class RecordListActivity : AppCompatActivity() {
             }
             spinners.add(cfg to sp)
         }
+
+        clearBtn = com.google.android.material.button.MaterialButton(
+            this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle
+        ).apply {
+            text = "清空"
+            textSize = 12f
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(12), 0, dp(12), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)
+            )
+            visibility = View.GONE
+            setOnClickListener {
+                filterValues.clear()
+                search.setText("")
+                filter = ""
+                for ((_, sp) in spinners) sp.setSelection(0, false)
+                applyFilter()
+            }
+        }
+        row.addView(clearBtn)
 
         findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.fab).setOnClickListener {
             startActivity(
@@ -103,7 +130,7 @@ class RecordListActivity : AppCompatActivity() {
             .filter { row -> kws.all { row.searchText.contains(it) } }
             .filter { row ->
                 spinners.all { (cfg, _) ->
-                    val v = filterValues[cfg.field]
+                    val v = filterValues[cfg.id]
                     v.isNullOrBlank() || recordKey(row.data, cfg) == v
                 }
             }
@@ -111,18 +138,48 @@ class RecordListActivity : AppCompatActivity() {
             .toList()
         adapter.submit(items)
         findViewById<TextView>(R.id.count).text = "共 ${items.size} 条"
+        if (this::clearBtn.isInitialized) {
+            val active = filter.isNotBlank() || filterValues.values.any { it.isNotBlank() }
+            clearBtn.visibility = if (active) View.VISIBLE else View.GONE
+        }
     }
 
-    /** 记录在某个下拉下的分组键：文字字段用原始值，管型字段用公称值+R前缀 */
+    /**
+     * 记录在某个下拉下的分组键。
+     * segment>0 时从规格串里取第 N 段（1=主轴，2=末端，3=壁厚）；
+     * 否则按 numericGroup 走「公称值+R前缀」或「原始文字」。
+     */
     private fun recordKey(map: Map<String, String>, cfg: CategoryConfig.Dropdown): String? {
         val raw = map[cfg.groupByField]
+        if (cfg.segment > 0) return specSegment(raw, cfg.segment)
         return if (cfg.numericGroup) tubeLabel(groupKey(raw)) else raw?.takeIf { it.isNotBlank() }
     }
+
+    /**
+     * 从规格串取第 n 段（1 起算）：水箱管16×1.5 / R16×2.0×0.3 / 16*1.5*0.26
+     * 第 1 段必须是数字，否则视为非规格行（尺寸标准表里的「2. 同一批次…」这类说明），返回 null。
+     */
+    private fun specSegment(value: String?, n: Int): String? {
+        if (value.isNullOrBlank()) return null
+        val s = SPEC_PREFIX.replace(value.trim(), "")
+        val parts = s.split(*SPEC_SEPS)
+        if (parts.isEmpty() || parts[0].trim().toDoubleOrNull() == null) return null
+        if (n - 1 >= parts.size) return null
+        return parts[n - 1].trim().takeIf { it.isNotBlank() }
+    }
+
+    /** 复合值排序键：0.28/0.3 → 0.28；非数字排最后 */
+    private fun sortKey(value: String): Double =
+        value.substringBefore('/').toDoubleOrNull() ?: Double.MAX_VALUE
 
     /** 下拉选项来自已加载的全量数据，不再额外查库（原来每个下拉都会再全表查一次） */
     private fun refreshSpinners() {
         for ((cfg, sp) in spinners) {
-            val keys = if (cfg.numericGroup) {
+            val keys = if (cfg.segment > 0) {
+                allRows.mapNotNull { row -> specSegment(row.data[cfg.groupByField], cfg.segment) }
+                    .distinct()
+                    .sortedBy { sortKey(it) }
+            } else if (cfg.numericGroup) {
                 allRows.mapNotNull { row -> tubeLabel(groupKey(row.data[cfg.groupByField])) }
                     .distinct()
                     .sortedBy { it.removePrefix("R").toFloatOrNull() ?: Float.MAX_VALUE }
@@ -137,7 +194,7 @@ class RecordListActivity : AppCompatActivity() {
                 this, android.R.layout.simple_spinner_item, options
             ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
             sp.adapter = adapter2
-            val current = filterValues[cfg.field] ?: ""
+            val current = filterValues[cfg.id] ?: ""
             val sel = options.indexOf(current)
             if (sel > 0 && sp.selectedItemPosition != sel) {
                 sp.setSelection(sel, false)
@@ -145,16 +202,30 @@ class RecordListActivity : AppCompatActivity() {
         }
     }
 
-    /** 取公称值：字段值的第一个数字（R16×1.5×0.3 / 16*1.5*0.3 → "16"） */
+    /**
+     * 取公称值：规格串第 1 段（R16×1.5×0.3 / 16*1.5*0.3 / 水箱管26×2.0 → 16 / 26）。
+     * 第 1 段不是数字的说明行返回 null，避免生成 R2、R3 这类假选项。
+     */
     private fun groupKey(value: String?): String? {
         if (value.isNullOrBlank()) return null
-        return Regex("^\\s*R?\\s*(\\d+(?:\\.\\d+)?)").find(value)?.groupValues?.get(1)
+        val s = SPEC_PREFIX.replace(value.trim(), "")
+        val head = s.split(*SPEC_SEPS).firstOrNull()?.trim() ?: return null
+        return head.toDoubleOrNull()?.let { LengthCalc.fmt(it) }
     }
 
     /** 管型显示名：统一加 R 前缀（R12、R16、R23.5…，与模具编号习惯一致） */
     private fun tubeLabel(key: String?): String? {
         if (key == null) return null
         return "R$key"
+    }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        /** 规格串前缀（水箱管 / R） */
+        val SPEC_PREFIX = Regex("^(水箱管|R)")
+        /** 规格串分隔符：× * x X */
+        val SPEC_SEPS = charArrayOf('×', '*', 'x', 'X')
     }
 
     inner class RecordAdapter : RecyclerView.Adapter<RecordAdapter.VH>() {

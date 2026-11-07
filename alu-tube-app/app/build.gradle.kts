@@ -11,8 +11,8 @@ android {
         applicationId = "com.xnlu.alutube"
         minSdk = 26
         targetSdk = 34
-        versionCode = 31
-        versionName = "3.10"
+        versionCode = 32
+        versionName = "3.11"
     }
 
     buildTypes {

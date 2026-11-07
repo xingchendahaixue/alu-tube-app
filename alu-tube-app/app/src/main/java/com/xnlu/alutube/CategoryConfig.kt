@@ -6,12 +6,19 @@ object CategoryConfig {
      * @param field 显示用的归属字段
      * @param groupByField 分组依据字段
      * @param numericGroup true=取该字段值的第一个数字作公称值并加R前缀（管型）；false=直接用原始文字值（如客户名）
+     * @param segment 规格串分段取值：0=整串；1=主轴；2=末端；3=壁厚
+     *
+     * key 用于筛选状态与 UI 的唯一标识；不给时按 field 推导，
+     * 同一字段挂多个下拉（如产品型号 → 主轴/末端）必须显式给 key，否则会互相覆盖。
      */
     data class Dropdown(
         val field: String,
         val allLabel: String,
         val groupByField: String = field,
-        val numericGroup: Boolean = true
+        val numericGroup: Boolean = true,
+        val segment: Int = 0,
+        /** 筛选状态唯一标识，留空时取 field */
+        val id: String = field
     )
 
     data class Cat(
@@ -34,7 +41,9 @@ object CategoryConfig {
             lengthCalc = true,
             dropdowns = listOf(
                 Dropdown("客户名称", "全部客户", numericGroup = false),
-                Dropdown("主轴范围(mm)", "全部主轴型号", groupByField = "规格型号(mm)")
+                Dropdown("主轴范围(mm)", "全部主轴型号", groupByField = "规格型号(mm)"),
+                Dropdown("末端范围(mm)", "全部末端型号", groupByField = "规格型号(mm)", numericGroup = false, segment = 2, id = "tip"),
+                Dropdown("压力/备注(MPa)", "全部壁厚", groupByField = "规格型号(mm)", numericGroup = false, segment = 3, id = "wall")
             )
         ),
         Cat(
@@ -44,7 +53,8 @@ object CategoryConfig {
             listOf("规格/mm", "长轴A(±0.04)", "短轴B(±0.05)", "末端C(±0.04)", "R", "成品长度(mm)", "裁切刀数", "原料品牌", "原料规格", "核对状态", "备注"),
             lengthCalc = true,
             dropdowns = listOf(
-                Dropdown("长轴A(±0.04)", "全部长轴型号", groupByField = "规格/mm")
+                Dropdown("长轴A(±0.04)", "全部长轴型号", groupByField = "规格/mm"),
+                Dropdown("末端C(±0.04)", "全部末端型号", groupByField = "规格/mm", numericGroup = false, segment = 2, id = "tip")
             )
         ),
         Cat(
@@ -53,7 +63,8 @@ object CategoryConfig {
             listOf("产品型号", "架次", "辊位类型"),
             listOf("产品型号", "架次", "辊位类型", "模具编号", "备注"),
             dropdowns = listOf(
-                Dropdown("产品型号", "全部产品型号", numericGroup = false)
+                Dropdown("产品型号", "全部产品型号", numericGroup = false),
+                Dropdown("产品型号", "全部末端型号", numericGroup = false, segment = 2, id = "tip")
             )
         ),
         Cat(

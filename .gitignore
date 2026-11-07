@@ -17,3 +17,6 @@ captures/
 
 # 交付包（如需随版本管理，删掉这一行）
 releases/*.apk
+
+# 真机验证截图
+_screenshots/
